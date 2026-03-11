@@ -1,5 +1,7 @@
 // src/app/api/goals/route.ts
 
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { createApiClient } from '@/lib/supabase-server'
 import { calcMonthsToGoal } from '@/lib/utils'

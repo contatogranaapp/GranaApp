@@ -1,5 +1,7 @@
 // src/app/api/transactions/route.ts
 
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { createApiClient } from '@/lib/supabase-server'
 import { detectCategory } from '@/lib/utils'

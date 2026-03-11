@@ -1,4 +1,7 @@
 // src/app/api/chat/route.ts
+
+export const dynamic = 'force-dynamic'
+
 import { genAI, AI_MODEL } from "@/lib/gemini";
 
 export async function POST(req: Request) {

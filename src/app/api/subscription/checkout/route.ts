@@ -1,5 +1,7 @@
 // src/app/api/subscription/checkout/route.ts
 
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { createApiClient } from '@/lib/supabase-server'
 import { stripe, STRIPE_PRICE_ID, PRO_TRIAL_DAYS } from '@/lib/stripe'
