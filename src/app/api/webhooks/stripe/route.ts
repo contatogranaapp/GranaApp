@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server'
 import { stripe, STRIPE_WEBHOOK_SECRET } from '@/lib/stripe'
-import { supabaseAdmin } from '@/lib/supabase-server'
+import { getSupabaseAdmin } from '@/lib/supabase-server'
 import type Stripe from 'stripe'
 
 // App Router: desabilitar body parser para esta rota
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       const sub = event.data.object as Stripe.Subscription
       const plan = sub.status === 'active' || sub.status === 'trialing' ? 'pro' : 'free'
 
+      const supabaseAdmin = getSupabaseAdmin()
       await supabaseAdmin
         .from('profiles')
         .update({ plan, stripe_subscription_id: sub.id })
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
     case 'customer.subscription.deleted': {
       const sub = event.data.object as Stripe.Subscription
 
+      const supabaseAdmin = getSupabaseAdmin()
       await supabaseAdmin
         .from('profiles')
         .update({ plan: 'free', stripe_subscription_id: null })
