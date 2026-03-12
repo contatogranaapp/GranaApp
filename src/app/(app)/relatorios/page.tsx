@@ -3,15 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from 'recharts'
-
-async function getSupabase() {
-  const { createClient } = await import('@supabase/supabase-js')
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: true, storageKey: 'grana-auth', storage: window.localStorage } }
-  )
-}
+import { createBrowserClient } from '@/lib/supabase'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -19,7 +11,27 @@ function formatCurrency(value: number) {
 
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
+// Mapa local de categorias para ícones/cores (igual ao AddTransactionButton)
+const CAT_MAP: Record<string, { name: string; icon: string; color: string }> = {
+  cat_alimentacao: { name: 'Alimentação',  icon: '🍕', color: '#F5A623' },
+  cat_transporte:  { name: 'Transporte',   icon: '🚗', color: '#5B8DEF' },
+  cat_moradia:     { name: 'Moradia',      icon: '🏠', color: '#9B59B6' },
+  cat_saude:       { name: 'Saúde',        icon: '💊', color: '#2DCC8F' },
+  cat_lazer:       { name: 'Lazer',        icon: '🎮', color: '#E91E8C' },
+  cat_educacao:    { name: 'Educação',     icon: '📚', color: '#00BCD4' },
+  cat_assinaturas: { name: 'Assinaturas',  icon: '📱', color: '#818CF8' },
+  cat_salario:     { name: 'Salário',      icon: '💼', color: '#2DCC8F' },
+  cat_freelance:   { name: 'Freelance',    icon: '💻', color: '#2DCC8F' },
+  cat_outros_gast: { name: 'Outros',       icon: '📦', color: '#6B7280' },
+}
+
+function getCat(categoryId: string | null | undefined) {
+  if (!categoryId) return { name: 'Outros', icon: '📦', color: '#6B7280' }
+  return CAT_MAP[categoryId] ?? { name: categoryId, icon: '📦', color: '#6B7280' }
+}
+
 export default function RelatoriosPage() {
+  const supabase = createBrowserClient()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year] = useState(now.getFullYear())
@@ -27,68 +39,106 @@ export default function RelatoriosPage() {
   const [loading, setLoading] = useState(true)
   const [scoreHistory, setScoreHistory] = useState<any[]>([])
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const supabase = await getSupabase()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01`
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0]
-
-      const [txRes, goalsRes] = await Promise.all([
-        supabase.from('transactions').select('*, categories(name,icon,color)').eq('user_id', session.user.id).gte('date', startDate).lte('date', endDate).order('date', { ascending: true }),
-        supabase.from('goals').select('id').eq('user_id', session.user.id).eq('status', 'active'),
-      ])
-
-      const transactions = txRes.data ?? []
-      const totalIncome = transactions.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0)
-      const totalExpense = transactions.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + t.amount, 0)
-      const savingsRate = totalIncome > 0 ? Math.max(0, ((totalIncome - totalExpense) / totalIncome) * 100) : 0
-
-      // Por categoria
-      const byCat: Record<string, any> = {}
-      transactions.filter((t: any) => t.type === 'expense').forEach((t: any) => {
-        const key = t.category_id || 'outros'
-        if (!byCat[key]) byCat[key] = { name: t.categories?.name ?? 'Outros', icon: t.categories?.icon ?? '📦', color: t.categories?.color ?? '#6B7280', total: 0, count: 0 }
-        byCat[key].total += t.amount
-        byCat[key].count++
-      })
-      const categories = Object.values(byCat).sort((a: any, b: any) => b.total - a.total).map((c: any) => ({ ...c, percent: totalExpense > 0 ? (c.total / totalExpense) * 100 : 0 }))
-
-      // Por dia
-      const byDay: Record<number, any> = {}
-      transactions.forEach((t: any) => {
-        const day = new Date(t.date + 'T12:00:00').getDate()
-        if (!byDay[day]) byDay[day] = { day, expense: 0, income: 0 }
-        if (t.type === 'expense') byDay[day].expense += t.amount
-        else byDay[day].income += t.amount
-      })
-      const daysInMonth = new Date(year, month, 0).getDate()
-      const byDayArray = Array.from({ length: daysInMonth }, (_, i) => byDay[i + 1] ?? { day: i + 1, expense: 0, income: 0 })
-
-      const top5 = [...transactions].filter((t: any) => t.type === 'expense').sort((a: any, b: any) => b.amount - a.amount).slice(0, 5)
-
-      // Calcular score
-      let score = 50
-      if (savingsRate >= 20) score += 20
-      else if (savingsRate >= 10) score += 10
-      else if (savingsRate < 0) score -= 20
-      if (totalIncome - totalExpense >= 0) score += 10
-      if ((goalsRes.data?.length ?? 0) > 0) score += 10
-      if (categories.length > 0) score += 10
-      score = Math.max(0, Math.min(100, score))
-
-      // Upsert score histórico (silencioso, tabela pode não existir)
+      setError(null)
       try {
-        await supabase.from('health_scores').upsert({ user_id: session.user.id, month, year, score }, { onConflict: 'user_id,month,year' })
-      } catch (e) { /* silencioso */ }
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          setError('Sessão não encontrada. Faça login novamente.')
+          setLoading(false)
+          return
+        }
 
-      setScoreHistory([])
-      setData({ totalIncome, totalExpense, savingsRate, categories, byDayArray, top5, score, transactionCount: transactions.length, session })
-      setLoading(false)
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+
+        const [txRes, goalsRes] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('id, type, amount, description, date, category_id')
+            .eq('user_id', session.user.id)
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .order('date', { ascending: true }),
+          supabase
+            .from('goals')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .eq('status', 'active'),
+        ])
+
+        if (txRes.error) {
+          setError(`Erro ao carregar transações: ${txRes.error.message}`)
+          setLoading(false)
+          return
+        }
+
+        const transactions = txRes.data ?? []
+        const totalIncome = transactions
+          .filter((t: any) => t.type === 'income')
+          .reduce((s: number, t: any) => s + (t.amount ?? 0), 0)
+        const totalExpense = transactions
+          .filter((t: any) => t.type === 'expense')
+          .reduce((s: number, t: any) => s + (t.amount ?? 0), 0)
+        const savingsRate = totalIncome > 0 ? Math.max(0, ((totalIncome - totalExpense) / totalIncome) * 100) : 0
+
+        // Por categoria (usando mapa local)
+        const byCat: Record<string, any> = {}
+        transactions.filter((t: any) => t.type === 'expense').forEach((t: any) => {
+          const key = t.category_id || 'cat_outros_gast'
+          const catInfo = getCat(t.category_id)
+          if (!byCat[key]) byCat[key] = { ...catInfo, total: 0, count: 0 }
+          byCat[key].total += t.amount ?? 0
+          byCat[key].count++
+        })
+        const categories = Object.values(byCat)
+          .sort((a: any, b: any) => b.total - a.total)
+          .map((c: any) => ({ ...c, percent: totalExpense > 0 ? (c.total / totalExpense) * 100 : 0 }))
+
+        // Por dia
+        const byDay: Record<number, any> = {}
+        transactions.forEach((t: any) => {
+          const day = new Date(t.date + 'T12:00:00').getDate()
+          if (!byDay[day]) byDay[day] = { day, expense: 0, income: 0 }
+          if (t.type === 'expense') byDay[day].expense += t.amount ?? 0
+          else byDay[day].income += t.amount ?? 0
+        })
+        const daysInMonth = new Date(year, month, 0).getDate()
+        const byDayArray = Array.from({ length: daysInMonth }, (_, i) => byDay[i + 1] ?? { day: i + 1, expense: 0, income: 0 })
+
+        const top5 = [...transactions]
+          .filter((t: any) => t.type === 'expense')
+          .sort((a: any, b: any) => b.amount - a.amount)
+          .slice(0, 5)
+
+        // Score
+        let score = 50
+        if (savingsRate >= 20) score += 20
+        else if (savingsRate >= 10) score += 10
+        else if (savingsRate < 0) score -= 20
+        if (totalIncome - totalExpense >= 0) score += 10
+        if ((goalsRes.data?.length ?? 0) > 0) score += 10
+        if (categories.length > 0) score += 10
+        score = Math.max(0, Math.min(100, score))
+
+        // Upsert score histórico (silencioso)
+        try {
+          await supabase
+            .from('health_scores')
+            .upsert({ user_id: session.user.id, month, year, score }, { onConflict: 'user_id,month,year' })
+        } catch (_e) { /* silencioso */ }
+
+        setScoreHistory([])
+        setData({ totalIncome, totalExpense, savingsRate, categories, byDayArray, top5, score, transactionCount: transactions.length, session })
+      } catch (err: any) {
+        setError(err?.message ?? 'Erro inesperado ao carregar relatório.')
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [month, year])
@@ -100,9 +150,7 @@ export default function RelatoriosPage() {
       const url = `/api/reports/pdf?month=${month}&year=${year}&token=${data.session.access_token}`
       const win = window.open(url, '_blank')
       if (win) {
-        win.onload = () => {
-          setTimeout(() => win.print(), 800)
-        }
+        win.onload = () => { setTimeout(() => win.print(), 800) }
       }
     } catch (e) {
       alert('Erro ao gerar relatório. Tente novamente.')
@@ -143,6 +191,10 @@ export default function RelatoriosPage() {
       <div style={{ padding: 'clamp(16px,5vw,32px)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         {loading ? (
           <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', padding: '60px 0' }}>Carregando relatório...</div>
+        ) : error ? (
+          <div style={{ textAlign: 'center', color: '#FF5E5E', padding: '40px 0', fontSize: '14px' }}>
+            ⚠️ {error}
+          </div>
         ) : !data ? null : (
           <>
             {/* KPIs */}
@@ -164,16 +216,22 @@ export default function RelatoriosPage() {
             <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-4">
               <div style={s.card}>
                 <p style={{ fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>Gastos por Dia</p>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={data.byDayArray} barGap={2}>
-                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: 'rgba(240,239,232,0.3)', fontSize: 10 }} interval={4} />
-                    <YAxis hide />
-                    <Tooltip contentStyle={{ backgroundColor: '#1C1C22', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', fontSize: '12px' }} formatter={(v: any) => [formatCurrency(v)]} />
-                    <Bar dataKey="expense" fill="rgba(255,94,94,0.6)" radius={[3,3,0,0]} />
-                    <Bar dataKey="income" fill="rgba(45,204,143,0.7)" radius={[3,3,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {data.transactionCount === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', padding: '40px 0', fontSize: '13px' }}>
+                    Nenhuma transação em {MONTHS[month - 1]}
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={data.byDayArray} barGap={2}>
+                      <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
+                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: 'rgba(240,239,232,0.3)', fontSize: 10 }} interval={4} />
+                      <YAxis hide />
+                      <Tooltip contentStyle={{ backgroundColor: '#1C1C22', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', fontSize: '12px' }} formatter={(v: any) => [formatCurrency(v)]} />
+                      <Bar dataKey="expense" fill="rgba(255,94,94,0.6)" radius={[3,3,0,0]} />
+                      <Bar dataKey="income" fill="rgba(45,204,143,0.7)" radius={[3,3,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
               <div style={{ ...s.card, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Saúde Financeira</p>
@@ -241,17 +299,25 @@ export default function RelatoriosPage() {
               <div style={s.card}>
                 <p style={{ fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>Top 5 Maiores Gastos</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {data.top5.map((tx: any, i: number) => (
-                    <div key={tx.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
-                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.25)', width: '20px' }}>#{i + 1}</span>
-                      <span style={{ fontSize: '15px' }}>{tx.categories?.icon ?? '📦'}</span>
-                      <span style={{ flex: 1, fontSize: '13px' }}>{tx.description}</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#FF5E5E' }}>{formatCurrency(tx.amount)}</span>
-                    </div>
-                  ))}
+                  {data.top5.map((tx: any, i: number) => {
+                    const cat = getCat(tx.category_id)
+                    return (
+                      <div key={tx.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
+                        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.25)', width: '20px' }}>#{i + 1}</span>
+                        <span style={{ fontSize: '15px' }}>{cat.icon}</span>
+                        <span style={{ flex: 1, fontSize: '13px' }}>{tx.description}</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#FF5E5E' }}>{formatCurrency(tx.amount)}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
+
+            {/* Resumo de transações */}
+            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '12px', paddingBottom: '16px' }}>
+              {data.transactionCount} transação(ões) em {MONTHS[month - 1]} {year}
+            </div>
           </>
         )}
       </div>
