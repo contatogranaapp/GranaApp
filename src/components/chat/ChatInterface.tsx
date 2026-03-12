@@ -196,24 +196,61 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
           }
           const cartaoNome = cartaoId ? creditCards.find(c => c.id === cartaoId)?.name : null
           
-          const { error: dbError } = await supabase.from('transactions').insert({
-            user_id: session.user.id,
-            type: t.tipo.toLowerCase() === 'receita' ? 'income' : 'expense',
-            amount: Number(t.valor),
-            description: t.descricao,
-            date: t.data || new Date().toISOString().split("T")[0],
-            category_id: mapCategory(t.categoria),
-            credit_card_id: cartaoId,
-            is_installment: false,
-            is_recurring: false,
-            source: 'ai_chat',
-          })
+          const isInstallment = (t.parcelas && t.parcelas > 1) ? true : false
+          const installmentTotal = isInstallment ? parseInt(t.parcelas, 10) : 1
+          
+          let dbError = null
+          
+          if (isInstallment && installmentTotal > 1) {
+            const groupId = crypto.randomUUID()
+            const installments = []
+            let baseDate = t.data ? new Date(`${t.data}T12:00:00`) : new Date()
+            
+            for (let i = 1; i <= installmentTotal; i++) {
+              installments.push({
+                user_id: session.user.id,
+                type: t.tipo.toLowerCase() === 'receita' ? 'income' : 'expense',
+                amount: Number(t.valor) / installmentTotal,
+                description: `${t.descricao} (${i}/${installmentTotal})`,
+                date: baseDate.toISOString().split('T')[0],
+                category_id: mapCategory(t.categoria),
+                credit_card_id: cartaoId,
+                is_installment: true,
+                installment_current: i,
+                installment_total: installmentTotal,
+                installment_group_id: groupId,
+                source: 'ai_chat',
+              })
+              // Adiciona 1 mês para a próxima parcela
+              baseDate.setMonth(baseDate.getMonth() + 1)
+            }
+            
+            const res = await supabase.from('transactions').insert(installments)
+            if (res.error) dbError = res.error
+          } else {
+            const res = await supabase.from('transactions').insert({
+              user_id: session.user.id,
+              type: t.tipo.toLowerCase() === 'receita' ? 'income' : 'expense',
+              amount: Number(t.valor),
+              description: t.descricao,
+              date: t.data || new Date().toISOString().split("T")[0],
+              category_id: mapCategory(t.categoria),
+              credit_card_id: cartaoId,
+              is_installment: false,
+              is_recurring: false,
+              source: 'ai_chat',
+            })
+            if (res.error) dbError = res.error
+          }
           
           if (dbError) throw new Error(dbError.message)
           
-          const successMsg = cartaoNome
-            ? `\n\n✅ *Lançamento registrado na fatura do ${cartaoNome}!*`
-            : `\n\n✅ *Lançamento registrado com sucesso!*`
+          let successMsg = `\n\n✅ *Lançamento registrado com sucesso!*`
+          if (cartaoNome) {
+            successMsg = isInstallment 
+              ? `\n\n✅ *Compra parcelada em ${installmentTotal}x registrada na fatura do ${cartaoNome}!*`
+              : `\n\n✅ *Lançamento registrado na fatura do ${cartaoNome}!*`
+          }
           
           setMessages(prev => prev.map(m =>
             m.id === aiMsg.id ? { ...m, content: clean + successMsg } : m

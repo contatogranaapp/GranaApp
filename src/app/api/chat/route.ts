@@ -87,14 +87,15 @@ Formato obrigatório:
     "categoria": "Alimentação",
     "descricao": "iFood - Pizza",
     "data": "${today}",
-    "cartao_id": null
+    "cartao_id": null,
+    "parcelas": 1
   }
 }
 |||END_JSON|||
 
 REGRAS IMPORTANTES para preencher o JSON:
 - "tipo": sempre "gasto" ou "receita"
-- "valor": número sem R$ nem vírgula (ex: 150.00)
+- "valor": número sem R$ nem vírgula (ex: 150.00). Se for parcelado, informe o valor TOTAL da compra.
 - "categoria": DEVE ser exatamente um destes valores:
   "Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Educação", "Assinaturas", "Outros"
 - "descricao": texto livre descrevendo o lançamento
@@ -104,6 +105,7 @@ REGRAS IMPORTANTES para preencher o JSON:
   - Se não mencionar cartão (ex: "paguei no débito", "paguei em dinheiro", "paguei no pix") → use null
   - Se o usuário mencionar "cartão" sem especificar qual, e houver apenas 1 cartão cadastrado → use o ID desse cartão
   - Se houver múltiplos cartões e não ficar claro qual → pergunte antes de lançar
+- "parcelas": Se o usuário comprou parcelado (ex: "em 5x", "dividido em 3", "parcelado em 10 vezes"), informe o número de parcelas (ex: 5). Se for à vista ou não mencionado, use 1.
 
 Exemplos de mapeamento de categoria:
 - Mercado, restaurante, lanche, ifood, delivery → "Alimentação"
