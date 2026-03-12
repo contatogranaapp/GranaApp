@@ -4,6 +4,25 @@ import { createServerClient } from '@/lib/supabase'
 
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
+// Mapa local de categorias (igual ao frontend)
+const CAT_MAP: Record<string, { name: string; icon: string; color: string }> = {
+  cat_alimentacao: { name: 'Alimentação',  icon: '🍕', color: '#F5A623' },
+  cat_transporte:  { name: 'Transporte',   icon: '🚗', color: '#5B8DEF' },
+  cat_moradia:     { name: 'Moradia',      icon: '🏠', color: '#9B59B6' },
+  cat_saude:       { name: 'Saúde',        icon: '💊', color: '#2DCC8F' },
+  cat_lazer:       { name: 'Lazer',        icon: '🎮', color: '#E91E8C' },
+  cat_educacao:    { name: 'Educação',     icon: '📚', color: '#00BCD4' },
+  cat_assinaturas: { name: 'Assinaturas',  icon: '📱', color: '#818CF8' },
+  cat_salario:     { name: 'Salário',      icon: '💼', color: '#2DCC8F' },
+  cat_freelance:   { name: 'Freelance',    icon: '💻', color: '#2DCC8F' },
+  cat_outros_gast: { name: 'Outros',       icon: '📦', color: '#6B7280' },
+}
+
+function getCat(categoryId: string | null | undefined) {
+  if (!categoryId) return { name: 'Outros', icon: '📦', color: '#6B7280' }
+  return CAT_MAP[categoryId] ?? { name: categoryId, icon: '📦', color: '#6B7280' }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const month = parseInt(searchParams.get('month') || String(new Date().getMonth() + 1))
@@ -19,32 +38,28 @@ export async function GET(req: NextRequest) {
   const startDate = `${year}-${String(month).padStart(2,'0')}-01`
   const endDate = new Date(year, month, 0).toISOString().split('T')[0]
 
-  const [profileRes, txRes, goalsRes, budgetsRes] = await Promise.all([
+  const [profileRes, txRes, goalsRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('transactions').select('*, categories(name,icon,color), credit_cards(name)').eq('user_id', user.id).gte('date', startDate).lte('date', endDate).order('date', { ascending: false }),
+    supabase.from('transactions').select('id, type, amount, description, date, category_id').eq('user_id', user.id).gte('date', startDate).lte('date', endDate).order('date', { ascending: false }),
     supabase.from('goals').select('*').eq('user_id', user.id).eq('status', 'active'),
-    supabase.from('budgets').select('*, categories(name,icon,color)').eq('user_id', user.id).eq('month', month).eq('year', year),
   ])
 
   const profile = profileRes.data
   const txs = txRes.data ?? []
   const goals = goalsRes.data ?? []
-  const budgets = budgetsRes.data ?? []
 
-  // Adicionar nome do cartão nas transações
-  const txsWithCard = txs.map((t: any) => ({ ...t, credit_card_name: t.credit_cards?.name ?? null }))
-
-  const totalIncome = txsWithCard.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0)
-  const totalExpense = txsWithCard.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + t.amount, 0)
+  const totalIncome = txs.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + (t.amount ?? 0), 0)
+  const totalExpense = txs.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + (t.amount ?? 0), 0)
   const balance = totalIncome - totalExpense
   const savingsRate = totalIncome > 0 ? ((balance / totalIncome) * 100) : 0
 
-  // Por categoria (com ID para orçamentos)
+  // Por categoria (usando mapa local)
   const byCategory: Record<string, { name: string, icon: string, color: string, total: number }> = {}
-  txsWithCard.filter((t: any) => t.type === 'expense').forEach((t: any) => {
-    const key = t.category_id || 'outros'
-    if (!byCategory[key]) byCategory[key] = { name: t.categories?.name ?? 'Outros', icon: t.categories?.icon ?? '📦', color: t.categories?.color ?? '#6B7280', total: 0 }
-    byCategory[key].total += t.amount
+  txs.filter((t: any) => t.type === 'expense').forEach((t: any) => {
+    const key = t.category_id || 'cat_outros_gast'
+    const catInfo = getCat(t.category_id)
+    if (!byCategory[key]) byCategory[key] = { ...catInfo, total: 0 }
+    byCategory[key].total += t.amount ?? 0
   })
   const topCategories = Object.values(byCategory).sort((a, b) => b.total - a.total).slice(0, 6)
 
@@ -59,7 +74,6 @@ export async function GET(req: NextRequest) {
   else if (savingsRate < 0) score -= 20
   if (balance >= 0) score += 10
   if (goals.length > 0) score += 10
-  if (budgets.length > 0) score += 10
   score = Math.max(0, Math.min(100, score))
 
   const html = `<!DOCTYPE html>
@@ -358,42 +372,23 @@ export async function GET(req: NextRequest) {
     </div>`}).join('')}
   </div>` : ''}
 
-  ${budgets.length > 0 ? `
-  <!-- ORÇAMENTOS -->
-  <div class="section">
-    <div class="section-title">📊 Orçamentos do Mês</div>
-    ${budgets.map((b: any) => {
-      const spentInCat = byCategory[b.category_id]?.total ?? 0
-      const pct = b.limit_amount > 0 ? Math.min(100, (spentInCat / b.limit_amount) * 100) : 0
-      const status = pct >= 100 ? '#dc2626' : pct >= 80 ? '#d97706' : '#059669'
-      return `
-    <div class="budget-row">
-      <div class="cat-icon">${b.categories?.icon ?? '📦'}</div>
-      <div style="flex:1;font-size:13px;font-weight:500;color:#374151">${b.categories?.name ?? ''}</div>
-      <div class="cat-bar-wrap">
-        <div class="cat-bar" style="width:${pct.toFixed(0)}%;background:${status}"></div>
-      </div>
-      <div style="font-size:12px;color:${status};font-weight:600;min-width:130px;text-align:right">
-        ${fmt(spentInCat)} / ${fmt(b.limit_amount)}
-      </div>
-    </div>`}).join('')}
-  </div>` : ''}
+
 
   ${txs.length > 0 ? `
   <!-- TRANSAÇÕES -->
   <div class="section">
     <div class="section-title">📋 Transações do Mês (${txs.length})</div>
-    ${txs.slice(0, 25).map(tx => {
-      const cardLabel = (tx as any).credit_card_name ? `<div class="tx-card">💳 ${(tx as any).credit_card_name}</div>` : ''
+    ${txs.slice(0, 25).map((tx: any) => {
+      const cat = getCat(tx.category_id)
       return `
     <div class="tx-row">
       <div class="tx-date">${new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</div>
-      <div class="tx-icon">${tx.categories?.icon ?? (tx.type === 'income' ? '💰' : '📦')}</div>
+      <div class="tx-icon">${cat.icon}</div>
       <div class="tx-info">
         <div class="tx-desc">${tx.description}</div>
-        <div class="tx-cat">${tx.categories?.name ?? ''}${cardLabel}</div>
+        <div class="tx-cat">${cat.name}</div>
       </div>
-      <div class="tx-amount" style="color:${tx.type === 'income' ? '#059669' : '#dc2626'}">${tx.type === 'income' ? '+' : '-'}${fmt(tx.amount)}</div>
+      <div class="tx-amount" style="color:${tx.type === 'income' ? '#059669' : '#dc2626'}">${tx.type === 'income' ? '+' : '-'}${fmt(tx.amount ?? 0)}</div>
     </div>`}).join('')}
     ${txs.length > 25 ? `<p style="text-align:center;font-size:12px;color:#9ca3af;margin-top:14px;padding-top:10px;border-top:1px solid #f3f4f6">... e mais ${txs.length - 25} transações</p>` : ''}
   </div>` : ''}
