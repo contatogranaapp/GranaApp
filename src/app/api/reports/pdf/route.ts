@@ -62,9 +62,6 @@ export async function GET(req: NextRequest) {
   if (budgets.length > 0) score += 10
   score = Math.max(0, Math.min(100, score))
 
-  // usar txsWithCard no template
-  const txs = txsWithCard
-
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
