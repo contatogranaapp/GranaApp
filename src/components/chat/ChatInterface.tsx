@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Send, Loader2, Sparkles, TrendingDown, TrendingUp, Target } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import type { Profile, MonthlySummary, Goal, Transaction } from '@/types'
+import { v4 as uuidv4 } from 'uuid'
 
 interface Props {
   profile: Pick<Profile, 'name' | 'monthly_income' | 'plan'>
@@ -202,7 +203,7 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
           let dbError = null
           
           if (isInstallment && installmentTotal > 1) {
-            const groupId = crypto.randomUUID()
+            const groupId = uuidv4()
             const installments = []
             let baseDate = t.data ? new Date(`${t.data}T12:00:00`) : new Date()
             
@@ -226,7 +227,10 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
             }
             
             const res = await supabase.from('transactions').insert(installments)
-            if (res.error) dbError = res.error
+            if (res.error) {
+              console.error("[DB ERROR] Installments:", res.error)
+              dbError = res.error
+            }
           } else {
             const res = await supabase.from('transactions').insert({
               user_id: session.user.id,
@@ -240,10 +244,18 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
               is_recurring: false,
               source: 'ai_chat',
             })
-            if (res.error) dbError = res.error
+            if (res.error) {
+              console.error("[DB ERROR] Single:", res.error)
+              dbError = res.error
+            }
           }
           
-          if (dbError) throw new Error(dbError.message)
+          if (dbError) {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsg.id ? { ...m, content: clean + `\n\n❌ *Erro ao salvar no banco: ${dbError.message}*` } : m
+            ))
+            return
+          }
           
           let successMsg = `\n\n✅ *Lançamento registrado com sucesso!*`
           if (cartaoNome) {
