@@ -12,6 +12,7 @@ interface Props {
   goals: Goal[]
   recentTransactions: Pick<Transaction, 'type' | 'description' | 'amount' | 'date'>[]
   isPro: boolean
+  creditCards?: { id: string; name: string; limit_amount: number; closing_day: number; due_day: number }[]
 }
 
 interface Message {
@@ -65,7 +66,7 @@ function parseSpecial(text: string) {
   return { clean, tx, insight, transactionJson }
 }
 
-export function ChatInterface({ profile, summary, goals, recentTransactions, isPro }: Props) {
+export function ChatInterface({ profile, summary, goals, recentTransactions, isPro, creditCards = [] }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0', role: 'assistant',
@@ -116,7 +117,7 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history,
-          context: { profile, summary, goals, recentTransactions },
+          context: { profile, summary, goals, recentTransactions, creditCards },
         }),
       })
 
@@ -168,8 +169,6 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
         }
 
         try {
-          // Must use Supabase client directly (same as AddTransactionButton)
-          // because the server API route can't read the localStorage-based session (401)
           const { createClient } = await import('@supabase/supabase-js')
           const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -179,6 +178,10 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
           const { data: { session } } = await supabase.auth.getSession()
           if (!session) throw new Error('Sessão não encontrada')
           
+          // Verifica se o cartao_id fornecido é válido
+          const cartaoId = t.cartao_id && creditCards.some(c => c.id === t.cartao_id) ? t.cartao_id : null
+          const cartaoNome = cartaoId ? creditCards.find(c => c.id === cartaoId)?.name : null
+          
           const { error: dbError } = await supabase.from('transactions').insert({
             user_id: session.user.id,
             type: t.tipo.toLowerCase() === 'receita' ? 'income' : 'expense',
@@ -186,6 +189,7 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
             description: t.descricao,
             date: t.data || new Date().toISOString().split("T")[0],
             category_id: mapCategory(t.categoria),
+            credit_card_id: cartaoId,
             is_installment: false,
             is_recurring: false,
             source: 'ai_chat',
@@ -193,8 +197,12 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
           
           if (dbError) throw new Error(dbError.message)
           
+          const successMsg = cartaoNome
+            ? `\n\n✅ *Lançamento registrado na fatura do ${cartaoNome}!*`
+            : `\n\n✅ *Lançamento registrado com sucesso!*`
+          
           setMessages(prev => prev.map(m =>
-            m.id === aiMsg.id ? { ...m, content: clean + "\n\n✅ *Lançamento registrado com sucesso!*" } : m
+            m.id === aiMsg.id ? { ...m, content: clean + successMsg } : m
           ))
           
           router.refresh()

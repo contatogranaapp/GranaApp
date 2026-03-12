@@ -37,11 +37,11 @@ export default function ChatPage() {
       const now = new Date()
       const { start, end } = getMonthRange(now.getFullYear(), now.getMonth() + 1)
 
-      const [profileResult, transactionsResult, goalsResult] = await Promise.all([
+      const [profileResult, transactionsResult, goalsResult, cardsResult] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', userId).single(),
         supabase
           .from('transactions')
-          .select('*')
+          .select('*, credit_cards(name)')
           .eq('user_id', userId)
           .gte('date', start)
           .lte('date', end)
@@ -52,11 +52,17 @@ export default function ChatPage() {
           .select('*')
           .eq('user_id', userId)
           .eq('status', 'active'),
+        supabase
+          .from('credit_cards')
+          .select('id, name, limit_amount, closing_day, due_day')
+          .eq('user_id', userId)
+          .eq('is_active', true),
       ])
 
       const profile = profileResult.data!
       const transactions = transactionsResult.data ?? []
       const goals = goalsResult.data ?? []
+      const creditCards = cardsResult.data ?? []
 
       const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
       const totalExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
@@ -95,6 +101,7 @@ export default function ChatPage() {
         summary,
         goalsWithProgress,
         transactions,
+        creditCards,
       })
       setLoading(false)
     }
@@ -135,8 +142,10 @@ export default function ChatPage() {
           description: t.description,
           amount: t.amount,
           date: t.date,
+          credit_card_name: t.credit_cards?.name ?? null,
         }))}
         isPro={data.profile.plan === 'pro'}
+        creditCards={data.creditCards}
       />
     </div>
   )

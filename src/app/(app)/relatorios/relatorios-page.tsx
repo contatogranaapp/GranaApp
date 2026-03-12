@@ -102,13 +102,19 @@ export default function RelatoriosPage() {
       const res = await fetch(`/api/reports/pdf?month=${month}&year=${year}`, {
         headers: { Authorization: `Bearer ${data.session.access_token}` },
       })
-      const html = await res.text()
-      const win = window.open('', '_blank')
-      if (win) {
-        win.document.write(html)
-        win.document.close()
-        setTimeout(() => win.print(), 900)
-      }
+      if (!res.ok) throw new Error('Erro ao gerar PDF')
+      
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `relatorio-grana-${MONTHS[month-1].toLowerCase()}-${year}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert('Erro ao gerar PDF. Tente novamente.')
     } finally {
       setGeneratingPdf(false)
     }

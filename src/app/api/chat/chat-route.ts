@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     const lastMessage = messages[messages.length - 1].content;
 
     const balance = (context?.summary?.total_income ?? 0) - (context?.summary?.total_expense ?? 0);
+    const today = new Date().toISOString().split("T")[0];
     
     // Monta contexto financeiro para o system prompt
     const ctxStr = context?.summary
@@ -49,12 +50,19 @@ ${
     : "- Nenhum gasto registrado por categoria"
 }
 
+=== CARTÕES DE CRÉDITO CADASTRADOS ===
+${
+  context.creditCards?.length
+    ? context.creditCards.map((c: any) => `- ID: ${c.id} | Nome: "${c.name}" | Limite: R$ ${c.limit_amount?.toFixed(2)} | Fecha dia ${c.closing_day} | Vence dia ${c.due_day}`).join("\n")
+    : "- Nenhum cartão cadastrado"
+}
+
 === ÚLTIMAS TRANSAÇÕES ===
 ${
   context.recentTransactions?.length
     ? context.recentTransactions
         .slice(0, 5)
-        .map((t: any) => `- ${t.date}: ${t.description} — R$ ${t.amount?.toFixed(2)} (${t.type === 'income' ? 'Receita' : 'Gasto'})`)
+        .map((t: any) => `- ${t.date}: ${t.description} — R$ ${t.amount?.toFixed(2)} (${t.type === 'income' ? 'Receita' : 'Gasto'}${t.credit_card_name ? ` no ${t.credit_card_name}` : ''})`)
         .join("\n")
     : "- Nenhuma transação recente"
 }
@@ -64,7 +72,7 @@ ${
 Você PODE e DEVE criar lançamentos diretamente quando o usuário mencionar um gasto ou receita.
 
 Quando o usuário disser algo como "gastei X reais em Y", "paguei X em Y", "recebi X de Y",
-"comprei Y por X", etc., você deve:
+"comprei Y por X no cartão", etc., você deve:
 
 1. Responder de forma natural confirmando o lançamento
 2. Incluir no FINAL da sua resposta, separado por "|||JSON|||", um objeto JSON com a transação:
@@ -77,41 +85,47 @@ Formato obrigatório:
     "tipo": "gasto",
     "valor": 150.00,
     "categoria": "Alimentação",
-    "descricao": "Cartão da Maze",
-    "data": "2026-03-11"
+    "descricao": "iFood - Pizza",
+    "data": "${today}",
+    "cartao_id": null
   }
 }
 |||END_JSON|||
 
-Regras para preencher o JSON:
+REGRAS IMPORTANTES para preencher o JSON:
 - "tipo": sempre "gasto" ou "receita"
 - "valor": número sem R$ nem vírgula (ex: 150.00)
 - "categoria": DEVE ser exatamente um destes valores:
   "Alimentação", "Transporte", "Moradia", "Saúde", "Lazer", "Educação", "Assinaturas", "Outros"
 - "descricao": texto livre descrevendo o lançamento
-- "data": data de hoje no formato YYYY-MM-DD
+- "data": data no formato YYYY-MM-DD. Se o usuário não informar, use "${today}"
+- "cartao_id": MUITO IMPORTANTE!
+  - Se o usuário mencionar cartão, crédito, ou o nome de um cartão → use o ID do cartão correspondente da lista acima
+  - Se não mencionar cartão (ex: "paguei no débito", "paguei em dinheiro", "paguei no pix") → use null
+  - Se o usuário mencionar "cartão" sem especificar qual, e houver apenas 1 cartão cadastrado → use o ID desse cartão
+  - Se houver múltiplos cartões e não ficar claro qual → pergunte antes de lançar
 
 Exemplos de mapeamento de categoria:
-- Mercado, restaurante, lanche, ifood → "Alimentação"
-- Uber, gasolina, ônibus, cartão da Maze (se for transporte) → "Transporte"
-- Aluguel, condomínio, luz, água → "Moradia"
+- Mercado, restaurante, lanche, ifood, delivery → "Alimentação"
+- Uber, gasolina, ônibus, metrô, estacionamento → "Transporte"
+- Aluguel, condomínio, luz, água, internet → "Moradia"
 - Farmácia, médico, plano de saúde → "Saúde"
-- Cinema, netflix, jogos, passeio → "Lazer"
+- Cinema, netflix, jogos, passeio, bar → "Lazer"
 - Curso, livro, faculdade → "Educação"
-- Spotify, streaming, assinatura → "Assinaturas"
-- Salário, freela → "Outros" (ou mapeie como Receita)
+- Spotify, streaming, assinatura mensal → "Assinaturas"
 - Qualquer outra coisa → "Outros"
+- Salário, freela, renda → tipo "receita"
 
 Se não tiver certeza da categoria, use "Outros".
-Se o usuário não informar a data, use a data de hoje.
 Se a mensagem NÃO for sobre criar um lançamento, NÃO inclua o bloco |||JSON|||.
 
-INSTRUÇÕES:
+INSTRUÇÕES GERAIS:
 - Use SEMPRE os dados reais acima para responder perguntas sobre finanças
 - Seja direto, empático e use linguagem natural em português do Brasil
 - Dê insights acionáveis baseados nos dados reais
 - Se o usuário perguntar sobre gastos, receitas ou saldo, use os números reais acima
 - Nunca diga que não tem acesso aos dados — você tem, estão listados acima
+- Quando lançar no cartão, mencione isso na resposta: "Registrei na fatura do [nome do cartão]"
 `
       : `
 Você é o Assistente Grana, uma IA financeira pessoal inteligente e empática para brasileiros.

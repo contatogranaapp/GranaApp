@@ -41,13 +41,29 @@ export function AddTransactionButton() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [type, setType] = useState<'expense' | 'income'>('expense')
+  const [creditCards, setCreditCards] = useState<{ id: string; name: string }[]>([])
   const [form, setForm] = useState({
     description: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
     category_id: 'cat_alimentacao',
     notes: '',
+    credit_card_id: '',
   })
+
+  // Carregar cartões quando o modal abre
+  async function loadCards() {
+    const supabase = await getSupabase()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    const { data } = await supabase.from('credit_cards').select('id, name').eq('user_id', session.user.id).eq('is_active', true).order('created_at')
+    setCreditCards(data ?? [])
+  }
+
+  function openModal() {
+    setOpen(true)
+    loadCards()
+  }
 
   function set(field: string, value: string) {
     setForm(f => ({ ...f, [field]: value }))
@@ -74,6 +90,7 @@ export function AddTransactionButton() {
         date: form.date,
         category_id: form.category_id,
         notes: form.notes || null,
+        credit_card_id: form.credit_card_id || null,
         is_installment: false,
         is_recurring: false,
         source: 'manual',
@@ -85,7 +102,7 @@ export function AddTransactionButton() {
       }
 
       setOpen(false)
-      setForm({ description: '', amount: '', date: new Date().toISOString().split('T')[0], category_id: 'cat_alimentacao', notes: '' })
+      setForm({ description: '', amount: '', date: new Date().toISOString().split('T')[0], category_id: 'cat_alimentacao', notes: '', credit_card_id: '' })
       router.refresh()
     } catch (e: any) {
       setError(e.message ?? 'Erro inesperado')
@@ -101,7 +118,7 @@ export function AddTransactionButton() {
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={openModal}
         className="flex items-center gap-1.5 bg-[#2DCC8F] text-[#0C0C0F] font-semibold text-sm px-4 py-2 rounded-xl hover:opacity-88 hover:-translate-y-px transition-all duration-150"
       >
         <Plus className="w-4 h-4" />
@@ -114,7 +131,7 @@ export function AddTransactionButton() {
           {(['expense','income'] as const).map(t => (
             <button
               key={t}
-              onClick={() => { setType(t); set('category_id', t === 'expense' ? 'cat_alimentacao' : 'cat_salario') }}
+              onClick={() => { setType(t); set('category_id', t === 'expense' ? 'cat_alimentacao' : 'cat_salario'); set('credit_card_id', '') }}
               className={`py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                 type === t
                   ? t === 'expense'
@@ -147,7 +164,7 @@ export function AddTransactionButton() {
         </div>
 
         {/* Categoria */}
-        <div className="mb-4">
+        <div className="mb-3">
           <label className="block text-xs font-semibold text-white/40 mb-1.5">Categoria</label>
           <div className="grid grid-cols-4 gap-1.5">
             {visibleCategories.map(cat => (
@@ -166,6 +183,38 @@ export function AddTransactionButton() {
             ))}
           </div>
         </div>
+
+        {/* Cartão de crédito (só para gastos) */}
+        {type === 'expense' && creditCards.length > 0 && (
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-white/40 mb-1.5">💳 Cartão de crédito (opcional)</label>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => set('credit_card_id', '')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                  !form.credit_card_id
+                    ? 'bg-white/10 border-white/25 text-white'
+                    : 'bg-white/[0.03] border-white/[0.07] text-white/40'
+                }`}
+              >
+                Débito / Dinheiro
+              </button>
+              {creditCards.map(card => (
+                <button
+                  key={card.id}
+                  onClick={() => set('credit_card_id', form.credit_card_id === card.id ? '' : card.id)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                    form.credit_card_id === card.id
+                      ? 'bg-[#818CF8]/15 border-[#818CF8]/40 text-[#818CF8]'
+                      : 'bg-white/[0.03] border-white/[0.07] text-white/40'
+                  }`}
+                >
+                  💳 {card.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Observação */}
         <div className="mb-4">
