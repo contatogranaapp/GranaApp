@@ -38,10 +38,9 @@ export default function RelatoriosPage() {
       const startDate = `${year}-${String(month).padStart(2, '0')}-01`
       const endDate = new Date(year, month, 0).toISOString().split('T')[0]
 
-      const [txRes, goalsRes, scoresRes] = await Promise.all([
+      const [txRes, goalsRes] = await Promise.all([
         supabase.from('transactions').select('*, categories(name,icon,color)').eq('user_id', session.user.id).gte('date', startDate).lte('date', endDate).order('date', { ascending: true }),
         supabase.from('goals').select('id').eq('user_id', session.user.id).eq('status', 'active'),
-        supabase.from('health_scores').select('*').eq('user_id', session.user.id).order('year', { ascending: true }).order('month', { ascending: true }).limit(12),
       ])
 
       const transactions = txRes.data ?? []
@@ -82,13 +81,12 @@ export default function RelatoriosPage() {
       if (categories.length > 0) score += 10
       score = Math.max(0, Math.min(100, score))
 
-      // Upsert score histórico
+      // Upsert score histórico (silencioso, tabela pode não existir)
       try {
         await supabase.from('health_scores').upsert({ user_id: session.user.id, month, year, score }, { onConflict: 'user_id,month,year' })
       } catch (e) { /* silencioso */ }
 
-      const scores = scoresRes.data ?? []
-      setScoreHistory(scores.map((s: any) => ({ label: MONTHS[s.month - 1].slice(0, 3), score: s.score })))
+      setScoreHistory([])
       setData({ totalIncome, totalExpense, savingsRate, categories, byDayArray, top5, score, transactionCount: transactions.length, session })
       setLoading(false)
     }
@@ -99,22 +97,15 @@ export default function RelatoriosPage() {
     if (!data?.session) return
     setGeneratingPdf(true)
     try {
-      const res = await fetch(`/api/reports/pdf?month=${month}&year=${year}`, {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-      })
-      if (!res.ok) throw new Error('Erro ao gerar PDF')
-      
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `relatorio-grana-${MONTHS[month-1].toLowerCase()}-${year}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      const url = `/api/reports/pdf?month=${month}&year=${year}&token=${data.session.access_token}`
+      const win = window.open(url, '_blank')
+      if (win) {
+        win.onload = () => {
+          setTimeout(() => win.print(), 800)
+        }
+      }
     } catch (e) {
-      alert('Erro ao gerar PDF. Tente novamente.')
+      alert('Erro ao gerar relatório. Tente novamente.')
     } finally {
       setGeneratingPdf(false)
     }

@@ -59,15 +59,43 @@ export default function OrcamentoPage() {
     const endDate = new Date(year, month, 0).toISOString().split('T')[0]
     const { data: txs } = await supabase
       .from('transactions')
-      .select('category_id, amount')
+      .select('category_id, amount, categories(id, name)')
       .eq('user_id', session.user.id)
       .eq('type', 'expense')
       .gte('date', startDate)
       .lte('date', endDate)
 
+    // Mapa de gastos por category_id (UUID do banco)
     const spendMap: Record<string, number> = {}
     ;(txs ?? []).forEach((t: any) => {
       if (t.category_id) spendMap[t.category_id] = (spendMap[t.category_id] ?? 0) + t.amount
+    })
+
+    // Também mapear por nome da categoria (para lançamentos via chat com IDs hardcoded)
+    // Se o category_id não bater com nenhuma categoria do banco, tenta casar pelo nome
+    const catNameToId: Record<string, string> = {}
+    ;(cats ?? []).forEach((c: any) => { catNameToId[c.name.toLowerCase()] = c.id })
+
+    const HARDCODED_MAP: Record<string, string> = {
+      'cat_alimentacao': 'alimentação', 'cat_transporte': 'transporte',
+      'cat_moradia': 'moradia', 'cat_saude': 'saúde', 'cat_lazer': 'lazer',
+      'cat_educacao': 'educação', 'cat_assinaturas': 'assinaturas',
+      'cat_outros_gast': 'outros',
+    }
+
+    ;(txs ?? []).forEach((t: any) => {
+      const catId = t.category_id
+      if (!catId) return
+      // Se o ID não existe nas categorias do banco, tenta mapear pelo nome hardcoded
+      const isHardcoded = HARDCODED_MAP[catId]
+      if (isHardcoded) {
+        const realId = catNameToId[isHardcoded]
+        if (realId) {
+          spendMap[realId] = (spendMap[realId] ?? 0) + t.amount
+          // Remove o lançamento do ID errado para não duplicar
+          if (spendMap[catId]) delete spendMap[catId]
+        }
+      }
     })
 
     setCategories(cats ?? [])

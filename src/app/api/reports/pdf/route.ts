@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const month = parseInt(searchParams.get('month') || String(new Date().getMonth() + 1))
   const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
-  const token = req.headers.get('authorization')?.replace('Bearer ', '')
+  const token = req.headers.get('authorization')?.replace('Bearer ', '') || searchParams.get('token')
 
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -413,7 +413,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(html, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': `inline; filename="${filename}"`,
     },
   })
 }

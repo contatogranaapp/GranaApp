@@ -178,8 +178,22 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
           const { data: { session } } = await supabase.auth.getSession()
           if (!session) throw new Error('Sessão não encontrada')
           
-          // Verifica se o cartao_id fornecido é válido
-          const cartaoId = t.cartao_id && creditCards.some(c => c.id === t.cartao_id) ? t.cartao_id : null
+          // Verifica se o cartao_id fornecido é válido (por ID ou por nome)
+          let cartaoId: string | null = null
+          if (t.cartao_id) {
+            // Tenta por ID exato
+            const byId = creditCards.find(c => c.id === t.cartao_id)
+            if (byId) {
+              cartaoId = byId.id
+            } else {
+              // Tenta por nome (caso a IA retorne o nome em vez do ID)
+              const byName = creditCards.find(c =>
+                c.name.toLowerCase().includes(t.cartao_id.toLowerCase()) ||
+                t.cartao_id.toLowerCase().includes(c.name.toLowerCase())
+              )
+              if (byName) cartaoId = byName.id
+            }
+          }
           const cartaoNome = cartaoId ? creditCards.find(c => c.id === cartaoId)?.name : null
           
           const { error: dbError } = await supabase.from('transactions').insert({

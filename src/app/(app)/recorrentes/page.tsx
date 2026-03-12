@@ -64,6 +64,8 @@ export default function RecorrentesPage() {
     if (!form.description || !form.amount) return
     setSaving(true)
     const supabase = await getSupabase()
+
+    // 1. Salva na tabela de recorrentes
     await supabase.from('recurring_transactions').insert({
       user_id: userId,
       description: form.description,
@@ -73,6 +75,25 @@ export default function RecorrentesPage() {
       category_id: form.category_id || null,
       start_date: form.start_date,
     })
+
+    // 2. Cria também uma transação real para o mês atual
+    // para aparecer em relatórios, orçamento e dashboard
+    const today = new Date()
+    const startOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}-01`
+    const transactionDate = form.start_date >= startOfMonth ? form.start_date : startOfMonth
+
+    await supabase.from('transactions').insert({
+      user_id: userId,
+      type: form.type,
+      amount: parseFloat(form.amount),
+      description: form.description,
+      date: transactionDate,
+      category_id: form.category_id || null,
+      is_recurring: true,
+      is_installment: false,
+      source: 'manual',
+    })
+
     setForm({ description: '', amount: '', type: 'expense', interval: 'monthly', category_id: '', start_date: new Date().toISOString().split('T')[0] })
     setShowModal(false)
     setSaving(false)
