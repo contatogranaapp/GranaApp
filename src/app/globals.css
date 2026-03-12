@@ -1,0 +1,185 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #0C0C0F;
+    --surface: #141418;
+    --surface2: #1C1C22;
+    --border: rgba(255,255,255,0.07);
+    --text: #F0EFE8;
+    --muted: rgba(240,239,232,0.45);
+    --green: #2DCC8F;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #0C0C0F;
+    color: #F0EFE8;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar personalizada */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+  /* Range input */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    background: rgba(255,255,255,0.1);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #2DCC8F;
+    cursor: pointer;
+    border: 2px solid #0C0C0F;
+    box-shadow: 0 0 0 3px rgba(45,204,143,0.2);
+  }
+
+  /* Date input */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  /* Fonte serif */
+  .serif {
+    font-family: 'Instrument Serif', Georgia, serif;
+  }
+
+  /* Card padrão */
+  .card {
+    background-color: #141418;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 1rem;
+  }
+
+  /* Input padrão */
+  .input {
+    width: 100%;
+    background-color: #1C1C22;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: #F0EFE8;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+  .input::placeholder {
+    color: rgba(255,255,255,0.2);
+  }
+  .input:focus {
+    border-color: #2DCC8F;
+    box-shadow: 0 0 0 3px rgba(45,204,143,0.1);
+  }
+
+  /* Botão primário */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background-color: #2DCC8F;
+    color: #0C0C0F;
+    font-weight: 600;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+    cursor: pointer;
+    border: none;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+  .btn-primary:hover {
+    opacity: 0.88;
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Botão ghost */
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background-color: #1C1C22;
+    border: 1px solid rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.5);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+    cursor: pointer;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+  .btn-ghost:hover {
+    color: #F0EFE8;
+    border-color: rgba(255,255,255,0.2);
+  }
+}
+
+@layer utilities {
+  .animate-fade-up {
+    animation: fadeUp 0.4s ease both;
+  }
+
+  .animate-pulse-dot {
+    animation: pulseDot 2s infinite;
+  }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.4); }
+}
+
+/* ── RESPONSIVIDADE MOBILE FIRST ─────────────────────── */
+
+/* Desktop: mostra sidebar, esconde bottom nav */
+@media (min-width: 768px) {
+  .mobile-bottom-nav { display: none !important; }
+  .mobile-bottom-spacer { display: none !important; }
+  .mobile-header { display: none !important; }
+}
+
+/* Mobile: esconde sidebar, mostra bottom nav */
+@media (max-width: 767px) {
+  .desktop-sidebar { display: none !important; }
+}
+
