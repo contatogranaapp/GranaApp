@@ -229,7 +229,7 @@ export default function CartoesPage() {
                       <p style={{ fontSize: '13px', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{tx.description}</p>
                       <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', margin: 0 }}>
                         {new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                        {tx.is_installment && ` · ${tx.installment_current}/${tx.installment_total}x`}
+                        {tx.is_installment && ' · Parcelado'}
                       </p>
                     </div>
                     <span style={{ fontSize: '13px', fontWeight: 700, color: '#FF5E5E', flexShrink: 0 }}>{fmt(tx.amount)}</span>

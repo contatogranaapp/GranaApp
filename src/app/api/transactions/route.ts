@@ -76,9 +76,6 @@ export async function POST(request: Request) {
         account_id: account_id ?? null,
         notes: notes ?? null,
         is_installment: true,
-        installment_current: i,
-        installment_total,
-        installment_group_id: groupId,
         source: 'manual',
       })
       installmentDate.setMonth(installmentDate.getMonth() + 1)

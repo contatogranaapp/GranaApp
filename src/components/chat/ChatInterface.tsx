@@ -217,9 +217,6 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
                 category_id: mapCategory(t.categoria),
                 credit_card_id: cartaoId,
                 is_installment: true,
-                installment_current: i,
-                installment_total: installmentTotal,
-                installment_group_id: groupId,
                 source: 'ai_chat',
               })
               // Adiciona 1 mês para a próxima parcela
