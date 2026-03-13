@@ -53,12 +53,32 @@ export default function CartoesPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
 
-    // Período da fatura: do dia seguinte ao fechamento do mês anterior até o dia de fechamento
     const closingDay = card.closing_day
-    const prevMonth = month === 1 ? 12 : month - 1
-    const prevYear = month === 1 ? year - 1 : year
-    const startDate = `${prevYear}-${String(prevMonth).padStart(2,'0')}-${String(closingDay + 1).padStart(2,'0')}`
-    const endDate = `${year}-${String(month).padStart(2,'0')}-${String(closingDay).padStart(2,'0')}`
+    
+    const getClampedDate = (y: number, mIndex: number, d: number) => {
+      // Cria a data do último dia do mês desejado
+      const lastDayOfMonth = new Date(y, mIndex + 1, 0).getDate();
+      const safeDay = Math.min(d, lastDayOfMonth);
+      return new Date(y, mIndex, safeDay);
+    }
+    
+    // Mês atual é month - 1
+    const endDateObj = getClampedDate(year, month - 1, closingDay);
+    
+    // O start date é 1 dia APÓS o fechamento do mês anterior
+    const prevClosingDateObj = getClampedDate(year, month - 2, closingDay);
+    const startDateObj = new Date(prevClosingDateObj);
+    startDateObj.setDate(startDateObj.getDate() + 1);
+
+    const formatLocal = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    const startDate = formatLocal(startDateObj);
+    const endDate = formatLocal(endDateObj);
 
     const { data } = await supabase
       .from('transactions')

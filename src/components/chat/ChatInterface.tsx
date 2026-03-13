@@ -6,6 +6,7 @@ import { Send, Loader2, Sparkles, TrendingDown, TrendingUp, Target } from 'lucid
 import { formatCurrency } from '@/lib/utils'
 import type { Profile, MonthlySummary, Goal, Transaction } from '@/types'
 import { v4 as uuidv4 } from 'uuid'
+import { useRouter } from 'next/navigation'
 
 interface Props {
   profile: Pick<Profile, 'name' | 'monthly_income' | 'plan'>
@@ -80,8 +81,6 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   
-  // Use Next.js Router for refreshing server components seamlessly
-  const { useRouter } = require('next/navigation')
   const router = useRouter()
 
   useEffect(() => {
@@ -160,14 +159,6 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
       const { clean, transactionJson } = parseSpecial(full)
       if (transactionJson?.action === 'CREATE_TRANSACTION' && transactionJson.transaction) {
         const t = transactionJson.transaction
-        const mapCategory = (c: string) => {
-          const map: Record<string,string> = {
-            'Alimentação': 'cat_alimentacao', 'Transporte': 'cat_transporte',
-            'Moradia': 'cat_moradia', 'Saúde': 'cat_saude', 'Lazer': 'cat_lazer',
-            'Educação': 'cat_educacao', 'Assinaturas': 'cat_assinaturas', 'Salário': 'cat_salario'
-          }
-          return map[c] || 'cat_outros_gast'
-        }
 
         try {
           const { createClient } = await import('@supabase/supabase-js')
@@ -178,6 +169,17 @@ export function ChatInterface({ profile, summary, goals, recentTransactions, isP
           )
           const { data: { session } } = await supabase.auth.getSession()
           if (!session) throw new Error('Sessão não encontrada')
+
+          const { data: dbCategories } = await supabase
+            .from('categories')
+            .select('id, name')
+            .or(`user_id.is.null,user_id.eq.${session.user.id}`)
+            
+          const mapCategory = (c: string) => {
+            if (!dbCategories) return null;
+            const found = dbCategories.find(cat => cat.name.toLowerCase() === c.toLowerCase());
+            return found ? found.id : (dbCategories.find(cat => cat.name === 'Outros Gastos')?.id || null);
+          }
           
           // Verifica se o cartao_id fornecido é válido (por ID ou por nome)
           let cartaoId: string | null = null

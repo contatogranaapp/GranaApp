@@ -50,11 +50,12 @@ export default function PlanejamentoPage() {
     ])
 
     const spendMap: Record<string, number> = {}
-    let totalIncome = profileRes.data?.monthly_income ?? 0
+    
+    const manualIncomeSum = (txRes.data ?? []).filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0)
+    let totalIncome = (profileRes.data?.monthly_income ?? 0) + manualIncomeSum
 
     ;(txRes.data ?? []).forEach((t: any) => {
       if (t.type === 'expense' && t.category_id) spendMap[t.category_id] = (spendMap[t.category_id] ?? 0) + t.amount
-      if (t.type === 'income') totalIncome = Math.max(totalIncome, (txRes.data ?? []).filter((x: any) => x.type === 'income').reduce((s: number, x: any) => s + x.amount, 0))
     })
 
     setCategories(catsRes.data ?? [])

@@ -45,8 +45,11 @@ export async function GET(req: NextRequest) {
   ])
 
   const profile = profileRes.data
-  const txs = txRes.data ?? []
+  const rawTxs = txRes.data ?? []
   const goals = goalsRes.data ?? []
+
+  // Adicionar nome do cartão nas transações
+  const txs = rawTxs.map((t: any) => ({ ...t, credit_card_name: t.credit_cards?.name ?? null }))
 
   const totalIncome = txs.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + (t.amount ?? 0), 0)
   const totalExpense = txs.filter((t: any) => t.type === 'expense').reduce((s: number, t: any) => s + (t.amount ?? 0), 0)

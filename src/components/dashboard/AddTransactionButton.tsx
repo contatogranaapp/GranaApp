@@ -7,18 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useRouter } from 'next/navigation'
 
-const CATEGORIES = [
-  { id: 'cat_alimentacao', icon: '🍕', name: 'Alimentação' },
-  { id: 'cat_transporte',  icon: '🚗', name: 'Transporte' },
-  { id: 'cat_moradia',     icon: '🏠', name: 'Moradia' },
-  { id: 'cat_saude',       icon: '💊', name: 'Saúde' },
-  { id: 'cat_lazer',       icon: '🎮', name: 'Lazer' },
-  { id: 'cat_educacao',    icon: '📚', name: 'Educação' },
-  { id: 'cat_assinaturas', icon: '📱', name: 'Assinaturas' },
-  { id: 'cat_salario',     icon: '💼', name: 'Salário' },
-  { id: 'cat_freelance',   icon: '💻', name: 'Freelance' },
-  { id: 'cat_outros_gast', icon: '📦', name: 'Outros' },
-]
+
 
 async function getSupabase() {
   const { createClient } = await import('@supabase/supabase-js')
@@ -41,12 +30,13 @@ export function AddTransactionButton() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [type, setType] = useState<'expense' | 'income'>('expense')
+  const [categories, setCategories] = useState<{ id: string; name: string; icon: string; type: string }[]>([])
   const [creditCards, setCreditCards] = useState<{ id: string; name: string }[]>([])
   const [form, setForm] = useState({
     description: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
-    category_id: 'cat_alimentacao',
+    category_id: '',
     notes: '',
     credit_card_id: '',
   })
@@ -56,8 +46,22 @@ export function AddTransactionButton() {
     const supabase = await getSupabase()
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
-    const { data } = await supabase.from('credit_cards').select('id, name').eq('user_id', session.user.id).eq('is_active', true).order('created_at')
-    setCreditCards(data ?? [])
+    const [{ data: cards }, { data: cats }] = await Promise.all([
+      supabase.from('credit_cards').select('id, name').eq('user_id', session.user.id).eq('is_active', true).order('created_at'),
+      supabase.from('categories').select('id, name, icon, type').or(`user_id.is.null,user_id.eq.${session.user.id}`).order('name')
+    ])
+    setCreditCards(cards ?? [])
+    
+    if (cats && cats.length > 0) {
+      setCategories(cats)
+      const defaultExp = cats.find(c => c.type === 'expense' || c.type === 'both')?.id ?? cats[0].id
+      const defaultInc = cats.find(c => c.type === 'income' || c.type === 'both')?.id ?? cats[0].id
+      
+      setForm(f => ({ 
+        ...f, 
+        category_id: f.category_id || (type === 'expense' ? defaultExp : defaultInc)
+      }))
+    }
   }
 
   function openModal() {
@@ -102,7 +106,8 @@ export function AddTransactionButton() {
       }
 
       setOpen(false)
-      setForm({ description: '', amount: '', date: new Date().toISOString().split('T')[0], category_id: 'cat_alimentacao', notes: '', credit_card_id: '' })
+      const defaultExp = categories.find(c => c.type === 'expense' || c.type === 'both')?.id ?? ''
+      setForm({ description: '', amount: '', date: new Date().toISOString().split('T')[0], category_id: defaultExp, notes: '', credit_card_id: '' })
       router.refresh()
     } catch (e: any) {
       setError(e.message ?? 'Erro inesperado')
@@ -111,8 +116,8 @@ export function AddTransactionButton() {
     }
   }
 
-  const expenseCategories = CATEGORIES.filter(c => !['cat_salario','cat_freelance'].includes(c.id))
-  const incomeCategories  = CATEGORIES.filter(c => ['cat_salario','cat_freelance','cat_outros_gast'].includes(c.id))
+  const expenseCategories = categories.filter(c => c.type === 'expense' || c.type === 'both')
+  const incomeCategories  = categories.filter(c => c.type === 'income' || c.type === 'both')
   const visibleCategories = type === 'expense' ? expenseCategories : incomeCategories
 
   return (
@@ -131,7 +136,14 @@ export function AddTransactionButton() {
           {(['expense','income'] as const).map(t => (
             <button
               key={t}
-              onClick={() => { setType(t); set('category_id', t === 'expense' ? 'cat_alimentacao' : 'cat_salario'); set('credit_card_id', '') }}
+              onClick={() => { 
+                setType(t); 
+                const defaultCat = t === 'expense' 
+                  ? (categories.find(c => c.type === 'expense' || c.type === 'both')?.id ?? '')
+                  : (categories.find(c => c.type === 'income' || c.type === 'both')?.id ?? '');
+                set('category_id', defaultCat); 
+                set('credit_card_id', '') 
+              }}
               className={`py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                 type === t
                   ? t === 'expense'
